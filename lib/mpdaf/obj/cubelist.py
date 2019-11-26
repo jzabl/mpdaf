@@ -45,6 +45,7 @@ from numpy import allclose, array_equal
 
 from .cube import Cube
 from ..tools.fits import add_mpdaf_method_keywords, copy_keywords
+import astropy.io.fits as fits
 
 __all__ = ('CubeList', 'CubeMosaic')
 
@@ -304,7 +305,7 @@ class CubeList:
 
     checkers = ('check_dim', 'check_wcs')
 
-    def __init__(self, files, scalelist=None, offsetlist=None):
+    def __init__(self, files, scalelist=None, offsetlist=None, weightlist=None):
         self._logger = logging.getLogger(__name__)
         self.files = files
         self.nfiles = len(files)
@@ -316,7 +317,8 @@ class CubeList:
         self.flux_scales = scalelist
         self.flux_offsets = offsetlist
 
-        self.weights = None
+        self.weights = weightlist
+
 
     def _set_defaults(self):
         self.shape = self.cubes[0].shape
@@ -331,6 +333,22 @@ class CubeList:
         """
         return [cube[item] for cube in self.cubes]
 
+    def determine_exptime_weights(self, hdr_key_exptime='EXPTIME'):
+        """Setting the weights based on the exposure times (from the headers)
+        (weight proportional to EXPTIME)
+
+        Attributes
+        ----------
+        hdr_key_exptime : str, optional
+            Header keyword in primary header that contains the exposure time.
+            (default: EXPTIME)
+        """
+
+        exptimes = [fits.getval(f, hdr_key_exptime) for f in self.files]
+        max_et = max(exptimes)
+        self.weights = [et / max_et for et in exptimes]
+
+
     def info(self, verbose=False):
         """Print information."""
         rows = [(os.path.basename(c.filename),
@@ -342,6 +360,8 @@ class CubeList:
             t['scale'] = self.flux_scales
         if self.flux_offsets is not None:
             t['offset'] = self.flux_offsets
+        if self.weights is not None:
+            t['weights'] = self.weights
 
         for line in t.pformat():
             self._logger.info(line)

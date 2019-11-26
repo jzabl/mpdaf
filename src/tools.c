@@ -169,15 +169,15 @@ void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double 
 
   mpdaf_weighted_mean(data, weight, n, x, indx);
   /* The sigma clipping is not full correct for the weighted mean, I will probably clip for the higher S/N too much */
+  /* FIXME: I am implementing an experimental scaling of the clipping with the weights */
   x[2] = n;
   double med;
   med =  mpdaf_median(data,n, indx);
-  clip_lo = med - (nclip_low*x[1]);
-  clip_up = med + (nclip_up*x[1]);
-
   int i,ni = 0;
   for (i=0; i<n; i++)
     {
+      clip_lo = med - (nclip_low*x[1]/sqrt(weight[indx[i]])); /* FIXME: This scaling is fissh */
+      clip_up = med + (nclip_up*x[1]/sqrt(weight[indx[i]]));
       if ((data[indx[i]]<clip_up) && (data[indx[i]]>clip_lo))
         {
           ni = ni+1;
@@ -192,6 +192,8 @@ void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double 
       ni = 0;
       for (i=0; i<n; i++)
         {
+          clip_lo = med - (nclip_low*x[1]/sqrt(weight[indx[i]]));
+          clip_up = med + (nclip_up*x[1]/sqrt(weight[indx[i]]));
           if ((data[indx[i]]<clip_up) && (data[indx[i]]>clip_lo))
             {
               indx[ni]=indx[i];
@@ -199,7 +201,7 @@ void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double 
             }
         }
       nmax = nmax - 1;
-      mpdaf_mean_sigma_clip(data, ni, x, nmax, nclip_low, nclip_up, nstop, indx);
+      mpdaf_weighted_mean_sigma_clip(data, weight, ni, x, nmax, nclip_low, nclip_up, nstop, indx);
     }
 }
 
