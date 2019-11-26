@@ -316,6 +316,8 @@ class CubeList:
         self.flux_scales = scalelist
         self.flux_offsets = offsetlist
 
+        self.weights = None
+
     def _set_defaults(self):
         self.shape = self.cubes[0].shape
         self.wcs = self.cubes[0].wcs
@@ -509,8 +511,15 @@ class CubeList:
             offset = np.asarray(self.flux_offsets, dtype=float)
             self._logger.info('Using offsets')
 
+        if self.weights is None:
+            weight = np.ones(self.nfiles, dtype=float)
+        else:
+            weight = np.asarray(self.weights, dtype=float)
+            self._logger.info('Using weights')
+
+
         ctools.mpdaf_merging_sigma_clipping(
-            c_char_p(files), data, vardata, expmap, scale, offset, select_pix,
+            c_char_p(files), data, vardata, expmap, scale, offset, weight, select_pix,
             valid_pix, nmax, np.float64(nclip_low), np.float64(nclip_up),
             nstop, np.int32(var_mean), np.int32(mad))
 

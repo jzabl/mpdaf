@@ -23,6 +23,51 @@ void mpdaf_mean(double* data, int n, double x[3], int* indx)
     x[1] = sqrt(sum_deviation/n);
 }
 
+// Compute the arithmetic mean
+void mpdaf_weighted_mean(double* data, double* weight, int n, double x[3], int* indx)
+{
+
+  /* TODO It would be more efficient to assume that the weights are normalized (but I need to be careful, as the the total number of elements in the vector changes in the clipping)  */
+  double sum_nom = 0.0;
+  double sum_weight = 0.0;
+  double weighted_mean;
+  double sum_deviation=0.0;
+  int i;
+  for (i=0; i<n; i++)
+    {
+      sum_nom += data[indx[i]] * weight[indx[i]];
+      sum_weight += weight[indx[i]];
+    }
+  weighted_mean = sum_nom / sum_weight;
+
+  for(i=0; i<n;i++)
+    {
+      sum_deviation+=weight[indx[i]]*(data[indx[i]]-weighted_mean)*(data[indx[i]]-weighted_mean); /* This is the biased weighted variance */
+    }
+  x[0] = weighted_mean;
+  x[1] = sqrt(sum_deviation/sum_weight);
+}
+
+
+// Compute the arithmetic mean
+double mpdaf_weighted_mean_var(double* var, double* weight, int n, int* indx)
+{
+
+  double sum_nom = 0.0;
+  double sum_weight = 0.0;
+  double weighted_mean_var;
+  int i;
+  for (i=0; i<n; i++)
+    {
+      sum_nom += var[indx[i]]*weight[indx[i]]*weight[indx[i]];
+      sum_weight += weight[indx[i]];
+    }
+  weighted_mean_var = sum_nom / (sum_weight*sum_weight);
+ 
+  return weighted_mean_var;
+ }
+
+
 // Compute the sum
 double mpdaf_sum(double* data, int n, int* indx)
 {
@@ -116,6 +161,50 @@ void mpdaf_mean_sigma_clip(double* data, int n, double x[3], int nmax, double nc
         mpdaf_mean_sigma_clip(data, ni, x, nmax, nclip_low, nclip_up, nstop, indx);
     }
 }
+
+
+void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
+{
+  double clip_lo, clip_up;
+
+  mpdaf_weighted_mean(data, weight, n, x, indx);
+  /* The sigma clipping is not full correct for the weighted mean, I will probably clip for the higher S/N too much */
+  x[2] = n;
+  double med;
+  med =  mpdaf_median(data,n, indx);
+  clip_lo = med - (nclip_low*x[1]);
+  clip_up = med + (nclip_up*x[1]);
+
+  int i,ni = 0;
+  for (i=0; i<n; i++)
+    {
+      if ((data[indx[i]]<clip_up) && (data[indx[i]]>clip_lo))
+        {
+          ni = ni+1;
+        }
+    }
+  if (ni<nstop || ni==n)
+    {
+      return;
+    }
+  if ( nmax > 0 )
+    {
+      ni = 0;
+      for (i=0; i<n; i++)
+        {
+          if ((data[indx[i]]<clip_up) && (data[indx[i]]>clip_lo))
+            {
+              indx[ni]=indx[i];
+              ni = ni+1;
+            }
+        }
+      nmax = nmax - 1;
+      mpdaf_mean_sigma_clip(data, ni, x, nmax, nclip_low, nclip_up, nstop, indx);
+    }
+}
+
+
+
 
 // Iterative MAD sigma-clipping of array elements
 // return x[0]=median, x[1]=MAD std, x[2]=n

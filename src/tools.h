@@ -8,8 +8,14 @@ different C methods used by several functions
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
+
+
 // Compute the arithmetic mean
 void mpdaf_mean(double* data, int n, double x[3], int* indx);
+// Compute the weighted arithmetic mean
+void mpdaf_weighted_mean(double* data, double* weight, int n, double x[3], int* indx);
+// Compute the propagated variance for the weighted arithmetic mean
+double mpdaf_weighted_mean_var(double* var, double* weight, int n, int* indx);
 // Compute sum
 double mpdaf_sum(double* data, int n, int* indx);
 // Compute the median
@@ -20,6 +26,7 @@ void mpdaf_mean_mad(double* data, int n, double x[3], int *indx);
 int indexx(int n, double *arr, int *indx);
 // Iterative sigma-clipping of array elements
 void mpdaf_mean_sigma_clip(double* data, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx);
+void mpdaf_weighted_sigma_clip(double* data, double* weight, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx);
 void mpdaf_mean_madsigma_clip(double* data, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx);
 void mpdaf_median_sigma_clip(double* data, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx);
 // Linear interpolation

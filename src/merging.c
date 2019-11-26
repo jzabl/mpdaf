@@ -47,10 +47,10 @@ int split_files_list(char* input, char* filenames[]) {
             printf("ERROR: Too many files, limit is %d \n", MAX_FILES);
             exit(EXIT_FAILURE);
         }
-        printf("%3d: %s\n", nfiles, filenames[nfiles-1]);
+        /* printf("%3d: %s\n", nfiles, filenames[nfiles-1]); */
         token = strtok(NULL, delim);
     }
-    printf("nfiles: %d\n",nfiles);
+    /* printf("nfiles: %d\n",nfiles); */
     return nfiles;
 }
 
@@ -292,7 +292,8 @@ int mpdaf_merging_sigma_clipping(
     double* var,
     int* expmap,
     double* scale,
-    double*offset,
+    double* offset,
+    double* weight,
     int* selected_pix,
     int* valid_pix,
     int nmax,
@@ -315,15 +316,26 @@ int mpdaf_merging_sigma_clipping(
     printf("nclip_high = %f\n", nclip_up);
     printf("nstop = %d\n", nstop);
 
+    printf("Using weights:\n");
+
+
+
     // read input files list
     nfiles = split_files_list(input, filenames);
+
+    int j;
+    for (j=0; j < nfiles; j++){
+      printf("%3d: %s - weight: %f\n", j+1, filenames[j], weight[j]);
+    }
+    printf("nfiles: %d\n",nfiles);
+
 
 #ifdef _OPENMP
     int num_nthreads = get_max_threads(nfiles, typ_var);
     omp_set_num_threads(num_nthreads); // Set number of threads to use
 
     // create threads
-    #pragma omp parallel shared(filenames, nfiles, data, var, expmap, scale, valid_pix, nmax, nclip_low, nclip_up, nstop, selected_pix, typ_var, mad)
+    #pragma omp parallel shared(filenames, nfiles, data, var, expmap, scale, weight, valid_pix, nmax, nclip_low, nclip_up, nstop, selected_pix, typ_var, mad)
     {
 #endif
 
@@ -430,7 +442,7 @@ int mpdaf_merging_sigma_clipping(
                         if (typ_var==0) {
                             wvar[n] = pixvar[i][ii] * scale[i] * scale[i];
                         }
-                        n += 1;
+                        n += 1; 
                         valid[i] += 1;
                     }
                 }
@@ -452,14 +464,15 @@ int mpdaf_merging_sigma_clipping(
                         mpdaf_mean_madsigma_clip(wdata, n, x, nmax, nclip_low,
                                                  nclip_up, nstop, indx);
                     } else {
-                        mpdaf_mean_sigma_clip(wdata, n, x, nmax, nclip_low,
+                      mpdaf_weighted_mean_sigma_clip(wdata, weight, n, x, nmax, nclip_low,
                                               nclip_up, nstop, indx);
                     }
 
                     data[index] = x[0];   // mean value
                     expmap[index] = x[2]; // exp map
                     if (typ_var==0) {     // var
-                        var[index] = mpdaf_sum(wvar, x[2], indx) / (x[2] * x[2]);
+                      /* Note the index has changed during the clipping, that is why this is possible */
+                      var[index] = mpdaf_weighted_mean_var(wvar, weight, x[2], indx);
                     } else {
                         if (x[2]>1) {
                             var[index] = (x[1] * x[1]);
