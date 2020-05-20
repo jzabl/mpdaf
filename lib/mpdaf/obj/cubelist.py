@@ -305,7 +305,8 @@ class CubeList:
 
     checkers = ('check_dim', 'check_wcs')
 
-    def __init__(self, files, scalelist=None, offsetlist=None, weightlist=None):
+    def __init__(self, files, scalelist=None, offsetlist=None,
+                 weight_list=None, weight_type=None):
         self._logger = logging.getLogger(__name__)
         self.files = files
         self.nfiles = len(files)
@@ -317,7 +318,12 @@ class CubeList:
         self.flux_scales = scalelist
         self.flux_offsets = offsetlist
 
-        self.weights = weightlist
+        self.weights = weight_list
+        # FIXME: Only allow certain weighttypes
+        if (weight_list is not None) and (weight_type is None):
+            self.weight_type = 'default'
+        else:
+            self.weight_type = weight_type
 
 
     def _set_defaults(self):
@@ -345,8 +351,9 @@ class CubeList:
         """
 
         exptimes = [fits.getval(f, hdr_key_exptime) for f in self.files]
-        max_et = max(exptimes)
-        self.weights = [et / max_et for et in exptimes]
+        self.max_et = max(exptimes)
+        self.weight_type = 'exptime'
+        self.weights = [et / self.max_et for et in exptimes]
 
 
     def info(self, verbose=False):
@@ -424,8 +431,11 @@ class CubeList:
         hdr = c.primary_header
         copy_keywords(self.cubes[0].primary_header, hdr, KEYWORDS_TO_COPY)
 
-        if expnb is not None and 'EXPTIME' in hdr:
-            hdr['EXPTIME'] = hdr['EXPTIME'] * expnb
+        if self.weight_type == 'exptime':
+            hdr['EXPTIME'] =  expnb
+        else:
+            if expnb is not None and 'EXPTIME' in hdr:
+                hdr['EXPTIME'] = hdr['EXPTIME'] * expnb
 
         if header is not None:
             c.primary_header.update(header)
@@ -504,7 +514,7 @@ class CubeList:
         npixels = self.shape[0] * self.shape[1] * self.shape[2]
         data = np.empty(npixels, dtype=np.float64, order='C')
         vardata = np.empty(npixels, dtype=np.float64, order='C')
-        expmap = np.empty(npixels, dtype=np.intc, order='C')
+        expmap = np.empty(npixels, dtype=np.float32, order='C')
         valid_pix = np.zeros(self.nfiles, dtype=np.intc, order='C')
         select_pix = np.zeros(self.nfiles, dtype=np.intc, order='C')
 
@@ -539,8 +549,9 @@ class CubeList:
 
 
         ctools.mpdaf_merging_sigma_clipping(
-            c_char_p(files), data, vardata, expmap, scale, offset, weight, select_pix,
-            valid_pix, nmax, np.float64(nclip_low), np.float64(nclip_up),
+            c_char_p(files), data, vardata, expmap, scale,
+             offset, weight, select_pix, valid_pix,
+            nmax, np.float64(nclip_low), np.float64(nclip_up),
             nstop, np.int32(var_mean), np.int32(mad))
 
         # no valid pixels
@@ -557,10 +568,16 @@ class CubeList:
                     ('nclip_up', nclip_up, 'upper clipping parameter'),
                     ('nstop', nstop, 'clipping minimum number'),
                     ('var', var, 'type of variance')]
+
+        if self.weight_type == 'exptime':
+            expmap *= self.max_et
+
         kwargs = dict(expnb=_compute_expnb(expmap), keywords=keywords,
                       header=header, method='obj.cubelist.merging')
         expmap = self.save_combined_cube(expmap, unit=u.dimensionless_unscaled,
                                          **kwargs)
+     
+        # TODO What to do here for weightype default
         cube = self.save_combined_cube(data, var=vardata, **kwargs)
         return cube, expmap, statpix
 

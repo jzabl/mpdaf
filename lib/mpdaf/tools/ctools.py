@@ -64,14 +64,16 @@ else:
     charptr = ctypes.POINTER(ctypes.c_char)
     array_1d_double = ndpointer(dtype=ctypes.c_double, ndim=1,
                                 flags='C_CONTIGUOUS')
+    array_1d_float = ndpointer(dtype=ctypes.c_float, ndim=1,
+                                flags='C_CONTIGUOUS')
     array_1d_int = ndpointer(dtype=ctypes.c_int, ndim=1, flags='C_CONTIGUOUS')
 
     # mpdaf_merging_median
     ctools.mpdaf_merging_median.argtypes = [
         charptr,          # char* input
         array_1d_double,  # double* data
-        array_1d_int,     # int* expmap
-        array_1d_int      # int* valid_pix
+        array_1d_int,     # float* expmap
+        array_1d_float      # int* valid_pix
     ]
 
     # mpdaf_merging_sigma_clipping
@@ -79,7 +81,7 @@ else:
         charptr,          # char* input
         array_1d_double,  # double* data
         array_1d_double,  # double* var
-        array_1d_int,     # int* expmap
+        array_1d_float,     # float* expmap
         array_1d_double,  # double* scale
         array_1d_double,  # double* offset
         array_1d_double,  # double* weights
