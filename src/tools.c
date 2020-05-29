@@ -6,7 +6,7 @@
 
 
 // Compute the arithmetic mean
-void mpdaf_mean(double* data, int n, double x[3], int* indx)
+void mpdaf_mean(double* data, int n, double x[4], int* indx)
 {
     double mean=0.0, sum_deviation=0.0;
     int i;
@@ -24,7 +24,7 @@ void mpdaf_mean(double* data, int n, double x[3], int* indx)
 }
 
 // Compute the arithmetic mean
-void mpdaf_weighted_mean(double* data, double* weight, int n, double x[3], int* indx)
+void mpdaf_weighted_mean(double* data, double* weight, int n, double x[4], int* indx)
 {
 
   /* TODO It would be more efficient to assume that the weights are normalized (but I need to be careful, as the the total number of elements in the vector changes in the clipping)  */
@@ -96,7 +96,7 @@ double mpdaf_median(double *data, int  n, int *indx)
 }
 
 // Compute the arithmetic mean and MAD sigma
-void mpdaf_mean_mad(double* data, int n, double x[3], int *indx)
+void mpdaf_mean_mad(double* data, int n, double x[4], int *indx)
 {
     double mean=0.0, median=0.0;
     int i;
@@ -124,7 +124,7 @@ void mpdaf_mean_mad(double* data, int n, double x[3], int *indx)
 // Iterative sigma-clipping of array elements
 // return x[0]=mean, x[1]=std, x[2]=n
 // index must be initialized.
-void mpdaf_mean_sigma_clip(double* data, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
+void mpdaf_mean_sigma_clip(double* data, int n, double x[4], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
 {
     double clip_lo, clip_up;
     mpdaf_mean(data, n, x, indx);
@@ -163,28 +163,34 @@ void mpdaf_mean_sigma_clip(double* data, int n, double x[3], int nmax, double nc
 }
 
 
-void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
+void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double x[4], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
 {
   double clip_lo, clip_up;
 
   mpdaf_weighted_mean(data, weight, n, x, indx);
   /* The sigma clipping is not full correct for the weighted mean, I will probably clip for the higher S/N too much */
   /* FIXME: I am implementing an experimental scaling of the clipping with the weights */
-  x[2] = n;
+  x[2] = n; // FIXME: Is the n here simply the number of all frames; or does this include only the non NaN? (as this is iterative, this will updated in the sigma clipping
+
   double med;
   med =  mpdaf_median(data,n, indx);
   int i,ni = 0;
   for (i=0; i<n; i++)
     {
-      clip_lo = med - (nclip_low*x[1]/sqrt(weight[indx[i]])); /* FIXME: This scaling is fissh */
+      clip_lo = med - (nclip_low*x[1]/sqrt(weight[indx[i]])); /* FIXME: This scaling is fishy */
       clip_up = med + (nclip_up*x[1]/sqrt(weight[indx[i]]));
       if ((data[indx[i]]<clip_up) && (data[indx[i]]>clip_lo))
         {
           ni = ni+1;
         }
     }
-  if (ni<nstop || ni==n)
+  if (ni<nstop || ni==n) // too much clipped or nothing clipped
     {
+      x[3] = 0.;
+      for (i=0; i<n; i++)  // Calculate the sum of used weights;
+	{ 
+	  x[3] += weight[indx[i]];
+	}
       return;
     }
   if ( nmax > 0 )
@@ -203,6 +209,11 @@ void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double 
       nmax = nmax - 1;
       mpdaf_weighted_mean_sigma_clip(data, weight, ni, x, nmax, nclip_low, nclip_up, nstop, indx);
     }
+  x[3] = 0.; // Could make a function out of that; to have that working also correctly above
+  for (i=0; i<n; i++)  // Calculate the sum of used weights;
+    { 
+      x[3] += weight[indx[i]];
+    }
 }
 
 
@@ -210,7 +221,7 @@ void mpdaf_weighted_mean_sigma_clip(double* data, double* weight, int n, double 
 
 // Iterative MAD sigma-clipping of array elements
 // return x[0]=median, x[1]=MAD std, x[2]=n
-void mpdaf_mean_madsigma_clip(double* data, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
+void mpdaf_mean_madsigma_clip(double* data, int n, double x[4], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
 {
     double clip_lo, clip_up;
     mpdaf_mean_mad(data, n, x, indx);
@@ -250,7 +261,7 @@ void mpdaf_mean_madsigma_clip(double* data, int n, double x[3], int nmax, double
 
 // Iterative sigma-clipping of array elements
 // return x[0]=median, x[1]=std, x[2]=n
-void mpdaf_median_sigma_clip(double* data, int n, double x[3], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
+void mpdaf_median_sigma_clip(double* data, int n, double x[4], int nmax, double nclip_low, double nclip_up, int nstop, int* indx)
 {
     double clip_lo, clip_up;
     mpdaf_mean(data, n, x, indx);
