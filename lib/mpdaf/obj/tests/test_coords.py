@@ -128,11 +128,13 @@ class TestWCS:
         assert_array_equal(wcs.get_start(), [0.0, 0.0])
         assert_array_equal(wcs.get_end(), [4.0, 5.0])
         assert_array_equal(wcs.get_range(), [0.0, 0.0, 4.0, 5.0])
+        assert_array_equal(wcs.get_center(), [2.0, 2.5])
 
         wcs2 = WCS(crval=(0, 0), shape=(5, 6))
         assert_array_equal(wcs2.get_step(), [1.0, 1.0])
         assert_array_equal(wcs2.get_start(), [-2.0, -2.5])
         assert_array_equal(wcs2.get_end(), [2.0, 2.5])
+        assert_array_equal(wcs2.get_center(), [0, 0])
 
         wcs2.set_step([0.5, 2.5])
         assert_array_equal(wcs2.get_step(), [0.5, 2.5])
@@ -140,10 +142,52 @@ class TestWCS:
         assert wcs2.get_crval1() == 0.0
         assert wcs2.get_crval2() == 0.0
 
-        wcs2.set_crval1(-2, unit=2*u.pix)
-        assert wcs2.get_crval1(unit=2*u.pix) == -2.0
-        wcs2.set_crval2(-2, unit=2*u.pix)
-        assert wcs2.get_crval2(unit=2*u.pix) == -2.0
+        wcs2.set_crval1(-2, unit=2 * u.pix)
+        assert wcs2.get_crval1(unit=2 * u.pix) == -2.0
+        wcs2.set_crval2(-2, unit=2 * u.pix)
+        assert wcs2.get_crval2(unit=2 * u.pix) == -2.0
+
+    def test_coord(self):
+        """WCS class: testing coord"""
+        wcs = WCS(shape=(4, 5),
+                  crval=(-23.0, 5.0),
+                  cdelt=(0.2 / 3600., -0.2 / 3600.),
+                  deg=True)
+
+        p, q = wcs.coord(spaxel=True, relative=True)
+        assert p.mean() == 0
+        assert q.mean() == 0
+        assert p.shape == (4, 5)
+        assert q.shape == (4, 5)
+
+        p, q = wcs.coord(spaxel=True, relative=True, reshape=True)
+        assert p.shape == (4,)
+        assert q.shape == (5,)
+
+        p, q = wcs.coord(spaxel=True, relative=True, center=(5.2, 6.3))
+        assert p.min() == -5.2
+        assert q.min() == -6.3
+        assert p.shape == (4, 5)
+        assert q.shape == (4, 5)
+
+        dec, ra = wcs.coord()
+        assert_allclose(ra.min(), 4.99987929, rtol=1e-6)
+        assert_allclose(dec.min(), -23.000083333, rtol=1e-6)
+
+        dec, ra = wcs.coord(relative=True, unit='arcsec')
+        assert_allclose(ra.min(), -0.4345444, rtol=1e-6)
+        assert_allclose(dec.min(), -0.3000001, rtol=1e-6)
+
+        r, theta = wcs.coord(polar=True, unit='arcsec')
+        assert_allclose(r.max(), 0.5280425, rtol=1e-6)
+        assert_allclose(theta.mean(), 0.314159265, rtol=1e-6)
+
+        mask = np.empty(shape=(4, 5), dtype=bool)
+        mask[:, :] = False
+        mask[0, 0] = True
+        p, q = wcs.coord(spaxel=True, mask=mask)
+        assert p.shape == (19,)
+        assert q.shape == (19,)
 
 
 class TestWaveCoord:
@@ -206,13 +250,13 @@ class TestWaveCoord:
         assert wave.get_start(unit=u.nm) == 0.0
         assert wave.get_end(unit=u.nm) == 9.0
 
-        wave.set_crval(2, unit=2*u.nm)
+        wave.set_crval(2, unit=2 * u.nm)
         assert wave.get_crval() == 4.0
         wave.set_crpix(2)
         assert wave.get_crpix() == 2.0
         wave.set_step(2)
         assert wave.get_step() == 2.0
-        wave.set_step(2, unit=2*u.nm)
+        wave.set_step(2, unit=2 * u.nm)
         assert wave.get_step() == 4.0
 
     def test_rebin(self):

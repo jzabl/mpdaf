@@ -726,6 +726,75 @@ class WCS:
                         out=res)
         return res
 
+    def coord(self, spaxel=False, relative=False, center=None,
+              polar=False, unit=None, reshape=False, mask=None):
+        """Return the full coordinate array of the image
+
+        Parameters
+        ----------
+        unit : `astropy.units.Unit`
+            Unit of the spatial coordinates
+            if None return pixels
+        relative : bool
+            If True, the coordinate are given relative to the center
+        center : tuple
+            center coordinate use for relative and radial mode
+            if none, the image center is used
+            must be given in unit
+        polar : bool
+            if True, return polar coordinate (r, theta)
+        unit : `astropy.units.Unit`
+            The units of the world coordinates
+        mask : 2D array of bool
+            If not None, return only non masked spaxels
+        reshape : bool
+            if True, return two 1D array,
+            if False, return two 2D array (meshgrid)
+
+        Returns
+        -------
+        out : array of array of float
+            array of [dec,ra], [p,q], [delta_dec, delta_ra], [delta_p, delta_q],
+            [r, theta]
+
+        """
+        pixcrd = np.indices((self.naxis2, self.naxis1))
+        if spaxel:
+            x, y = pixcrd
+        else:
+            coord = self.pix2sky(pixcrd.reshape(2, -1).T).T
+            x, y = coord.reshape(pixcrd.shape)
+
+        if mask is not None:
+            x = x[~mask]
+            y = y[~mask]
+
+        if relative or polar:
+            if center is None:
+                if spaxel:
+                    center = 0.5 * np.array([self.naxis2 - 1, self.naxis1 - 1])
+                else:
+                    center = self.get_center()
+            x0, y0 = center
+            x = x - x0
+            y = y - y0
+
+        if not spaxel and unit is not None:
+            x = UnitArray(x, self.unit, unit)
+            y = UnitArray(y, self.unit, unit)
+
+        if polar:
+            theta = np.arctan2(y, x)
+            rho = np.hypot(x, y)
+            x = rho
+            y = theta
+
+        if reshape:
+            x = np.unique(x)
+            y = np.unique(y)
+
+        return x, y
+
     def pix2sky(self, x, unit=None):
         """Convert image pixel indexes (y,x) to world coordinates (dec,ra).
 
@@ -1056,6 +1125,26 @@ class WCS:
                   [self.naxis2 - 1, self.naxis1 - 1]]
         pixsky = self.pix2sky(pixcrd, unit=unit)
         return np.hstack([pixsky.min(axis=0), pixsky.max(axis=0)])
+
+    def get_center(self, unit=None):
+        """Return the center (dec,ra) of the image array.
+
+        Parameters
+        ----------
+        unit : `astropy.units.Unit`
+            The units of the returned angles.
+
+        Returns
+        -------
+        center : numpy.ndarray
+           The center, arranged as [dec, ra]. The returned values are
+           either in the units specified in the 'unit' input parameter,
+           or in the units stored in the self.unit property.
+
+        """
+        crange = self.get_range(unit=unit)
+        center = 0.5 * np.array([crange[0] + crange[2], crange[1] + crange[3]])
+        return center
 
     def get_start(self, unit=None):
         """Return the [dec,ra] coordinates of pixel (0,0).

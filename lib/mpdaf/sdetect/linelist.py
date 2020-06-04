@@ -49,8 +49,8 @@ __all__ = ['get_emlines', 'z_from_linepos']
 # vdisp (0/1) (v), display name (n)
 emlines = np.array([
     ('LYALPHA',  1215.67, 'em', 1,      0, 3, 0, "Lyα"),   
-    ('NeV1238',  1238.82, 'em', 0, 1240.8, 2, 0, None), # NeV
-    ('NeV1243',  1242.80, 'em', 0, 1240.8, 2, 0, "Nev"),
+    ('NV1238',  1238.82, 'em', 0, 1240.8, 2, 0, None), # NV
+    ('NV1243',  1242.80, 'em', 0, 1240.8, 2, 0, "NV"),
     ('SiII1260', 1260.42, 'is', 0,      0, 0, 0, "Siɪɪ"),
     ('OI1302',   1302.17, 'is', 0,      0, 0, 0, "Oɪ"),
     ('SIII1304', 1304.37, 'is', 0,      0, 0, 0, "Siɪɪ"),
@@ -120,7 +120,7 @@ emlines = np.array([
 
 def get_emlines(iden=None, z=0, vac=True, lbrange=None, margin=25, sel=None,
                 ltype=None, doublet=False, restframe=False, table=False,
-                family=None):
+                family=None, exlbrange=None):
     """Return list of emission lines
 
     Parameters
@@ -149,6 +149,8 @@ def get_emlines(iden=None, z=0, vac=True, lbrange=None, margin=25, sel=None,
     family : int
         select line with the given family (0=abs, 1=Balmer, 2=Forbidden,
         3=Resonant).
+    exlbrange : array-like
+        wavelength range to exclude in observed frame (ex for AO spectra)
     """
     em = emlines.copy()
     if iden is not None:
@@ -177,6 +179,12 @@ def get_emlines(iden=None, z=0, vac=True, lbrange=None, margin=25, sel=None,
         else:
             em = em[em['c'] - margin >= lbrange[0]]
             em = em[em['c'] + margin <= lbrange[1]]
+    if exlbrange is not None:
+        if restframe:
+            em = em[(em['c']*(1+z) < exlbrange[0]) | (em['c']*(1+z) > exlbrange[1])]
+        else:
+            em = em[(em['c'] < exlbrange[0]) | (em['c'] > exlbrange[1])]
+        
     if sel is not None:
         em = em[em['s'] == sel]
     if ltype is not None:

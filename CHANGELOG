@@ -1,5 +1,20 @@
-3.3 (09/11/2019)
+3.5dev (XX/XX/2020)
 -------------------
+
+- Add a parameter in `mpdaf.sdetect.linelist.get_emlines` to exclude a wavelength range (useful for AO spectra with masked Na region)
+
+3.4 (17/01/2020)
+----------------
+
+- Update fsf (combine_fsf, fwhm_moffat2gauss, documentation)
+
+- Mask NaN in muselet
+
+- Python 3.6+ is required.
+
+3.3 (09/11/2019)
+----------------
+
 - In `mpdaf.obj.cube.get_image` add an option to compute background from
   a median filter. Propagate this addition to `mpdaf.sdetect.source.add_narrow_band_image`
 

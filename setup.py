@@ -35,16 +35,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # See README.rst for details on how to install MPDAF.
 
+import numpy
 import os
 import subprocess
 import sys
 
 from setuptools import setup, find_packages, Extension
-from setuptools.command.build_ext import build_ext as _build_ext
+from setuptools.command.build_ext import build_ext
 from setuptools.command.test import test as TestCommand
 
-if sys.version_info[:2] < (3, 5):
-    sys.exit('MPDAF supports Python 3.5+ only')
+if sys.version_info[:2] < (3, 6):
+    sys.exit('MPDAF supports Python 3.6+ only')
 
 # Check if Cython is available
 try:
@@ -85,22 +86,6 @@ class PyTest(TestCommand):
         import pytest
         errno = pytest.main(self.pytest_args)
         sys.exit(errno)
-
-
-class build_ext(_build_ext, object):
-    def run(self):
-        # For extensions that require 'numpy' in their include dirs,
-        # replace 'numpy' with the actual paths
-        import numpy
-        np_include = numpy.get_include()
-
-        for extension in self.extensions:
-            if 'numpy' in extension.include_dirs:
-                idx = extension.include_dirs.index('numpy')
-                extension.include_dirs.insert(idx, np_include)
-                extension.include_dirs.remove('numpy')
-
-        super(build_ext, self).run()
 
 
 def use_openmp():
@@ -167,7 +152,7 @@ ext = '.pyx' if HAVE_CYTHON else '.c'
 ext_modules = [
     Extension('obj.merging',
               ['src/tools.c', './lib/mpdaf/obj/merging' + ext],
-              include_dirs=['numpy']),
+              include_dirs=[numpy.get_include()]),
 ]
 
 if HAVE_PKG_CONFIG:
@@ -197,7 +182,7 @@ setup(
     long_description=README,
     license='BSD',
     url='https://git-cral.univ-lyon1.fr/MUSE/mpdaf',
-    python_requires='>=3.5',
+    python_requires='>=3.6',
     install_requires=['numpy>=1.10.0', 'scipy', 'matplotlib', 'astropy>=1.0'],
     extras_require={
         'all': ['numexpr', 'fitsio', 'adjustText', 'joblib', 'tqdm',
@@ -230,9 +215,9 @@ setup(
         'Programming Language :: C',
         'Programming Language :: Cython',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: Implementation :: CPython',
         'Topic :: Scientific/Engineering :: Astronomy',
         'Topic :: Scientific/Engineering :: Physics'
