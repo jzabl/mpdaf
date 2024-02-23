@@ -47,10 +47,10 @@ int split_files_list(char* input, char* filenames[]) {
             printf("ERROR: Too many files, limit is %d \n", MAX_FILES);
             exit(EXIT_FAILURE);
         }
-        /* printf("%3d: %s\n", nfiles, filenames[nfiles-1]); */
+        printf("%3d: %s\n", nfiles, filenames[nfiles-1]);
         token = strtok(NULL, delim);
     }
-    /* printf("nfiles: %d\n",nfiles); */
+    printf("nfiles: %d\n",nfiles);
     return nfiles;
 }
 
@@ -154,7 +154,7 @@ void report_progress(time_t *ref, long firstpix[], int limits[], float value) {
     }
 }
 
-int mpdaf_merging_median(char* input, double* data, float* expmap, int* valid_pix)
+int mpdaf_merging_median(char* input, double* data, int* expmap, int* valid_pix)
 {
     char* filenames[MAX_FILES];
     int nfiles=0;
@@ -290,10 +290,9 @@ int mpdaf_merging_sigma_clipping(
     char* input,
     double* data,
     double* var,
-    float* expmap,
+    int* expmap,
     double* scale,
-    double* offset,
-    double* weight,
+    double*offset,
     int* selected_pix,
     int* valid_pix,
     int nmax,
@@ -316,24 +315,15 @@ int mpdaf_merging_sigma_clipping(
     printf("nclip_high = %f\n", nclip_up);
     printf("nstop = %d\n", nstop);
 
-    printf("Using weights:\n");
-
     // read input files list
     nfiles = split_files_list(input, filenames);
-
-    int j;
-    for (j=0; j < nfiles; j++){
-      printf("%3d: %s - weight: %f\n", j+1, filenames[j], weight[j]);
-    }
-    printf("nfiles: %d\n",nfiles);
-
 
 #ifdef _OPENMP
     int num_nthreads = get_max_threads(nfiles, typ_var);
     omp_set_num_threads(num_nthreads); // Set number of threads to use
 
     // create threads
-    #pragma omp parallel shared(filenames, nfiles, data, var, expmap, scale, weight, valid_pix, nmax, nclip_low, nclip_up, nstop, selected_pix, typ_var, mad)
+    #pragma omp parallel shared(filenames, nfiles, data, var, expmap, scale, valid_pix, nmax, nclip_low, nclip_up, nstop, selected_pix, typ_var, mad)
     {
 #endif
 
@@ -382,9 +372,9 @@ int mpdaf_merging_sigma_clipping(
         firstpix[0] = 1;
 
         //initialization
-        double *pix[MAX_FILES_PER_THREAD], *pixvar[MAX_FILES_PER_THREAD], *wdata, *wweight, *wvar=NULL;
+        double *pix[MAX_FILES_PER_THREAD], *pixvar[MAX_FILES_PER_THREAD], *wdata, *wvar=NULL;
         int *indx, *files_id;
-        double x[4];
+        double x[3];
         long npixels = naxes[0] * naxes[1];
         for (i=0; i<nfiles; i++)
         {
@@ -409,7 +399,6 @@ int mpdaf_merging_sigma_clipping(
             wvar = (double *) malloc(nfiles * sizeof(double));
         }
         wdata = (double *) malloc(nfiles * sizeof(double));
-	wweight = (double *) malloc(nfiles * sizeof(double));
         indx = (int *) malloc(nfiles * sizeof(int));
         files_id = (int *) malloc(nfiles * sizeof(int));
 
@@ -432,18 +421,16 @@ int mpdaf_merging_sigma_clipping(
             }
 
             for(ii=0; ii< npixels; ii++) {
-	        n = 0; // Only the non-nan pixels will increase n 
+                n = 0;
                 for (i=0; i<nfiles; i++) {
                     if (!isnan(pix[i][ii])) {
                         wdata[n] = (offset[i] + pix[i][ii]) * scale[i];
-			wweight[n] = weight[i];
                         files_id[n] = i;
                         indx[n] = n;
                         if (typ_var==0) {
                             wvar[n] = pixvar[i][ii] * scale[i] * scale[i];
                         }
                         n += 1;
-			// Need to here somehow keep track of the weights
                         valid[i] += 1;
                     }
                 }
@@ -454,7 +441,7 @@ int mpdaf_merging_sigma_clipping(
                     var[index] = NAN;  //var
                 } else if (n==1) {
                     data[index] = wdata[0]; //mean value
-                    expmap[index] = 1. / wweight[0];      //exp map // FIXME here also the weighting needs to be kept track abouta 
+                    expmap[index] = 1;      //exp map
                     if (typ_var==0)         //var
                         var[index] = wvar[0];
                     else
@@ -462,21 +449,17 @@ int mpdaf_merging_sigma_clipping(
                     select[files_id[0]] += 1;
                 } else {
                     if (mad==1) {
-		      // FIXME: Weighting not yet implemented .. 
                         mpdaf_mean_madsigma_clip(wdata, n, x, nmax, nclip_low,
                                                  nclip_up, nstop, indx);
-			expmap[index] = x[2]; // exp map; (simple sum of files)
                     } else {
-                      mpdaf_weighted_mean_sigma_clip(wdata, wweight, n, x, nmax, nclip_low,
+                        mpdaf_mean_sigma_clip(wdata, n, x, nmax, nclip_low,
                                               nclip_up, nstop, indx);
-		      expmap[index] = x[3]; // exp map (sum of weights) sum of weights
                     }
 
                     data[index] = x[0];   // mean value
-
+                    expmap[index] = x[2]; // exp map
                     if (typ_var==0) {     // var
-                      /* Note the index has changed during the clipping, that is why this is possible */
-                      var[index] = mpdaf_weighted_mean_var(wvar, wweight, x[2], indx);
+                        var[index] = mpdaf_sum(wvar, x[2], indx) / (x[2] * x[2]);
                     } else {
                         if (x[2]>1) {
                             var[index] = (x[1] * x[1]);
@@ -508,7 +491,6 @@ int mpdaf_merging_sigma_clipping(
         }
 
         free(wdata);
-	free(wweight);
         free(indx);
         free(files_id);
         for (i=0; i<nfiles; i++) {

@@ -44,9 +44,6 @@ from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
 from setuptools.command.test import test as TestCommand
 
-if sys.version_info[:2] < (3, 6):
-    sys.exit('MPDAF supports Python 3.6+ only')
-
 # Check if Cython is available
 try:
     from Cython.Build import cythonize
@@ -183,12 +180,12 @@ setup(
     license='BSD',
     url='https://git-cral.univ-lyon1.fr/MUSE/mpdaf',
     python_requires='>=3.6',
-    install_requires=['numpy>=1.10.0', 'scipy', 'matplotlib', 'astropy>=1.0'],
+    install_requires=['numpy>=1.10.0', 'scipy', 'matplotlib', 'astropy>=1.0','specutils'],
     extras_require={
         'all': ['numexpr', 'fitsio', 'adjustText', 'joblib', 'tqdm',
                 'specutils'],
         'docs': ['sphinx', 'sphinx_rtd_theme', 'sphinx_automodapi',
-                 'numpydoc', 'ipython', 'psutil'],
+                 'numpydoc', 'ipython', 'psutil','specutils'],
     },
     tests_require=['pytest'],
     package_dir={'': 'lib'},
