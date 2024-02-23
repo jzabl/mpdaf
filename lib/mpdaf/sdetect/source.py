@@ -399,10 +399,11 @@ _EXTNAME_TO_ATTRIBUTES = {v: k for k, v in _ATTRIBUTES_TO_EXTNAME.items()}
 
 
 class ExtLoader(collections.abc.MutableMapping):
+
     """Handles loading of FITS extensions.
 
     To avoid loading all the extensions of a source FITS file, this class
-    allows to load an extension only when the corresponding object is used.
+    allows one to load an extension only when the corresponding object is used.
 
     """
 
@@ -1043,7 +1044,8 @@ class Source:
                         if unit is None or unit == self.lines[col].unit:
                             self.lines[col][l] = val
                         else:
-                            self.lines[col][l] = (val * unit).to(self.lines[col].unit).value
+                            self.lines[col][l] = (val * unit).to(
+                                self.lines[col].unit).value
                     return
                 else:
                     if not add_if_not_matched:
@@ -1371,7 +1373,7 @@ class Source:
                 # or if method = "sum":
                 sub_flux = sum(flux[lbda1-margin-fband*(lbda2-lbda1)/2: lbda1-margin] +
                                 flux[lbda2+margin: lbda2+margin+fband*(lbda2-lbda1)/2]) /fband
-                                
+
                 # or if median_filter > 0:
                 sub_flux = median_filter in the wavelength axis of flux
         margin : float
@@ -1381,7 +1383,7 @@ class Source:
             The size of the off-band is ``fband x narrow-band width`` (in
             angstrom).
         median_filter : float
-            size of the median filter for background estimation (if set to 0, 
+            size of the median filter for background estimation (if set to 0,
             the classical off band images are used )
         method : str
             Name of the Cube method used to aggregate the data. This method
@@ -1498,7 +1500,8 @@ class Source:
                                             median_filter=median_filter,
                                             unit_wave=u.angstrom)
 
-    def add_seg_images(self, tags=None, DIR=None, del_sex=True):
+    def add_seg_images(self, tags=None, DIR=None, del_sex=True,
+                       save_seg_table=False, outdir='./', debug=False,):
         """Run SExtractor on all images to create segmentation maps.
 
         SExtractor will use the ``default.nnw``, ``default.param``,
@@ -1516,6 +1519,13 @@ class Source:
             Directory that contains the configuration files of sextractor
         del_sex : bool
             If False, configuration files of sextractor are not removed.
+        save_seg_table : bool
+            If True, segmentation table are saved in the source tables dict
+        outdir : str
+            Name of directory where temporary files are copied and SExtractor run
+            if None, a temporary directory with a unique name is created and deleted at the end
+        debug : bool
+            if True, the output of SExtractor is logged as DEBUG and the created and temporary directory files are not deleted
 
         """
         if 'MUSE_WHITE' in self.images:
@@ -1523,7 +1533,7 @@ class Source:
                 tags = [tag for tag in self.images
                         if tag[0:4] != 'SEG_' and 'MASK' not in tag]
 
-            segmentation(self, tags, DIR, del_sex)
+            segmentation(self, tags, DIR, del_sex, debug=debug, save_seg_table=save_seg_table, outdir=outdir)
         else:
             self._logger.warning('add_seg_images method use the MUSE_WHITE '
                                  'image computed by add_white_image method')
@@ -1919,7 +1929,8 @@ class Source:
                                        description='line name')
                     self.lines.add_column(col)
                 for w, name in zip(wl, lnames):
-                    self.lines['LINE'][np.where(abs(self.lines[col_lbda] - w) < 0.01)] = name
+                    self.lines['LINE'][
+                        np.where(abs(self.lines[col_lbda] - w) < 0.01)] = name
                 self._logger.info('crack_z: lines')
                 for l in self.lines.pformat():
                     self._logger.info(l)
@@ -2009,12 +2020,12 @@ class Source:
         ax : matplotlib.axes._subplots.AxesSubplot
             Matplotlib axis instance (eg ax = fig.add_subplot(2,3,1)).
         names : [str, str, str]
-            List of images coresponding to the blue, green and red filters.
+            List of images corresponding to the blue, green and red filters.
         showcenter : (float, str)
             radius in arcsec and color used to plot a circle around the center
             of the source.
         cuts : [(float, float), (float, float), (float, float)]
-            Minimum and maximum values to use for the scaling coresponding to
+            Minimum and maximum values to use for the scaling corresponding to
             the blue, green and red filters.
         kwargs : matplotlib.artist.Artist
             kwargs can be used to set additional plotting properties.
