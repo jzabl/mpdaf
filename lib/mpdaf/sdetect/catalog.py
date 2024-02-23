@@ -672,7 +672,7 @@ class Catalog(Table):
 
     def match(self, cat2, radius=1, colc1=(None, None), colc2=(None, None),
               full_output=True, **kwargs):
-        """Match elements of the current catalog with an other (in RA, DEC).
+        """Match elements of the current catalog with another (in RA, DEC).
 
         Parameters
         ----------
@@ -828,7 +828,7 @@ class Catalog(Table):
     def match3Dline(self, cat2, linecolc1, linecolc2, spatial_radius=1,
                     spectral_window=5, suffix=('_1', '_2'), full_output=True,
                     colc1=(None, None), colc2=(None, None), **kwargs):
-        """3D Match elements of the current catalog with an other using
+        """3D Match elements of the current catalog with another using
         spatial (RA, DEC) and list of spectral lines location.
 
         Parameters
@@ -1032,20 +1032,21 @@ class Catalog(Table):
                        frame='fk5', unit_pos='deg', unit_radius='arcsec'):
         """Return an `astropy.coordinates.SkyCoord` object."""
         try:
-            from regions import CircleSkyRegion, write_ds9
+            from regions import CircleSkyRegion, Regions
         except ImportError:
             self._logger.error("the 'regions' package is needed for this")
             raise
         ra, dec = self._get_radec_colnames((ra, dec))
         center = self.to_skycoord(ra=ra, dec=dec, frame=frame, unit=unit_pos)
         radius = radius * u.Unit(unit_radius)
-        regions = [CircleSkyRegion(center=c, radius=radius) for c in center]
-        write_ds9(regions, filename=outfile, coordsys=frame)
+        regions = Regions([CircleSkyRegion(center=c, radius=radius)
+                           for c in center])
+        regions.write(outfile, format='ds9')
 
     def plot_symb(self, ax, wcs, label=False, esize=0.8, lsize=None, etype='o',
                   ltype=None, ra=None, dec=None, id=None, ecol='k', lcol=None,
-                  alpha=1.0, fill=False, fontsize=8, expand=1.7, ledgecol=None,
-                  lfacecol=None, npolygon=3, **kwargs):
+                  alpha=1.0, fill=False, fontsize=8, expand=1.7, tcol='k', ledgecol=None,
+                  lfacecol=None, npolygon=3,  extent=None, **kwargs):
         """This function plots the sources location from the catalog.
 
         Parameters
@@ -1057,7 +1058,8 @@ class Catalog(Table):
         label: bool
             If True catalog ID are displayed.
         esize : float
-            symbol size in arcsec (used only if lsize is not set).
+            symbol size in arcsec if extent=None (used only if lsize is not set).
+            if extent is not None, the size unit is in the extent referential
         lsize : str
             Column name containing the size in arcsec.
         etype : str
@@ -1075,6 +1077,8 @@ class Catalog(Table):
             Name of the column that contains Color.
         ecol : str
             Symbol color (only used if lcol is not set).
+        tcol: str
+            Text label color
         alpha : float
             Symbol transparency.
         fill: bool
@@ -1085,10 +1089,15 @@ class Catalog(Table):
             Name of the column that contains the edge color.
         lfacecol: str
             Name of the column that contains the fqce color.
+        npolygon: int
+            Number of polygone to use with etype='p
+        extent: list of float
+            [x1,y1,x2,y2] axis limits used with image.plot(extent=extent), default None (use spaxels)
         **kwargs
             kwargs can be used to set additional plotting properties.
 
         """
+
         ra, dec = self._get_radec_colnames((ra, dec))
         id = id or self.meta.get('idname', self._idname_default)
 
@@ -1116,13 +1125,16 @@ class Catalog(Table):
         step = wcs.get_step(unit=u.arcsec)
         arr = np.vstack([self[dec].data, self[ra].data]).T
         arr = wcs.sky2pix(arr, unit=u.deg)
+        if extent is not None:
+            dl = [(extent[1]-extent[0])/wcs.naxis1,(extent[3]-extent[2])/wcs.naxis2]
+            arr = arr*dl + np.array([extent[0],extent[2]])
 
         for src, cen in zip(self, arr):
             yy, xx = cen
             if (xx < 0) or (yy < 0) or (xx > wcs.naxis1) or (yy > wcs.naxis2):
                 continue
             vsize = esize if lsize is None else src[lsize]
-            pixsize = vsize / step[0]
+            pixsize = vsize / step[0] if extent is None else vsize
             vtype = etype if ltype is None else src[ltype]
             vcol = None
             vedgecol = 'none'
@@ -1174,7 +1186,7 @@ class Catalog(Table):
             ax.add_artist(s)
             if label and (not np.ma.is_masked(src[id])):
                 texts.append((ax.text(xx, yy, src[id], ha='center',
-                                      fontsize=fontsize), cen[1], cen[0]))
+                                      fontsize=fontsize, color=tcol), cen[1], cen[0]))
             s.set_clip_box(ax.bbox)
 
         if label and len(texts) > 0:
