@@ -39,19 +39,22 @@ import types
 
 import astropy.units as u
 from astropy.io import fits
+from astropy.nddata import StdDevUncertainty
 from astropy.stats import gaussian_sigma_to_fwhm, gaussian_fwhm_to_sigma
 from astropy.convolution import convolve, Box1DKernel
 from os.path import join, abspath, dirname
 from scipy import interpolate, signal
 from scipy.optimize import leastsq
+from astropy.constants import c as C
+from specutils import Spectrum1D
 
-from . import ABmag_filters, wavelet1D
+from . import ABmag_filters, wavelet1D, WaveCoord
 from .arithmetic import ArithmeticMixin
 from .data import DataArray
 from .fitting import Gauss1D
 from .objs import flux2mag
 
-__all__ = ('Spectrum', 'vactoair', 'airtovac')
+__all__ = ('Spectrum', 'vactoair', 'airtovac', 'Spectrum1D_MPDAF')
 
 
 def vactoair(vacwl):
@@ -92,7 +95,7 @@ def airtovac(airwl):
     https://idlastro.gsfc.nasa.gov/ftp/pro/astro/airtovac.pro
 
     """
-    sigma2 = (1e4 / airwl)**2.        # Convert to wavenumber squared
+    sigma2 = (1e4 / airwl) ** 2.  # Convert to wavenumber squared
     n = 1.0 + (6.4328e-5 + 2.94981e-2 / (146. - sigma2) +
                2.5540e-4 / (41. - sigma2))
 
@@ -107,7 +110,6 @@ def airtovac(airwl):
 
 
 class Spectrum(ArithmeticMixin, DataArray):
-
     """Spectrum objects contain 1D arrays of numbers, optionally
     accompanied by corresponding variances. These numbers represent
     sample fluxes along a regularly spaced grid of wavelengths.
@@ -540,7 +542,7 @@ class Spectrum(ArithmeticMixin, DataArray):
 
         """
         # Convert the attenuation from dB to a linear scale factor.
-        gcut = 10.0**(-atten / 20.0)
+        gcut = 10.0 ** (-atten / 20.0)
 
         # Calculate the Nyquist folding frequency of the new pixel size.
         nyquist_folding_freq = 0.5 / newstep
@@ -571,7 +573,7 @@ class Spectrum(ArithmeticMixin, DataArray):
 
         # Sample the gaussian filter symmetrically around the central pixel.
         gx = np.arange(gshape, dtype=float) - gshape // 2
-        gy = np.exp(-0.5 * (gx / sigma)**2)
+        gy = np.exp(-0.5 * (gx / sigma) ** 2)
 
         # Area-normalize the gaussian profile.
         gy /= gy.sum()
@@ -649,14 +651,14 @@ class Spectrum(ArithmeticMixin, DataArray):
 
         # Get the data, mask (and variance) arrays, and replace bad pixels with
         # zeros.
-        if out._mask is not None:         # Is out.data a masked array?
+        if out._mask is not None:  # Is out.data a masked array?
             data = out.data.filled(0.0)
             if out._var is not None:
                 var = out.var.filled(0.0)
             else:
                 var = None
             mask = out._mask
-        else:                             # Is out.data just a numpy array?
+        else:  # Is out.data just a numpy array?
             mask = ~np.isfinite(out._data)
             data = out._data.copy()
             data[mask] = 0.0
@@ -757,7 +759,7 @@ class Spectrum(ArithmeticMixin, DataArray):
                                        weights=weights, returned=True)
             if self.var is not None:
                 err_flux = np.sqrt(
-                    np.ma.sum(self.var[lambda_slice] * weights**2) / wsum**2)
+                    np.ma.sum(self.var[lambda_slice] * weights ** 2) / wsum ** 2)
             else:
                 err_flux = np.inf
         else:
@@ -813,8 +815,8 @@ class Spectrum(ArithmeticMixin, DataArray):
 
             if self.var is not None:
                 err_flux = np.sqrt(
-                    np.ma.sum(self.var[lambda_slice] * weights**2) /
-                    wsum**2 * nsum**2)
+                    np.ma.sum(self.var[lambda_slice] * weights ** 2) /
+                    wsum ** 2 * nsum ** 2)
             else:
                 err_flux = np.inf
         else:
@@ -942,7 +944,7 @@ class Spectrum(ArithmeticMixin, DataArray):
         # will have inconvenient units. In such cases attempt to
         # convert the units of the wavelength axis to match the flux
         # units.
-        if unit in self.unit.bases:      # The wavelength units already agree.
+        if unit in self.unit.bases:  # The wavelength units already agree.
             out_unit = self.unit * unit
         else:
             try:
@@ -968,7 +970,7 @@ class Spectrum(ArithmeticMixin, DataArray):
         if self.var is None:
             err_flux = np.inf
         else:
-            err_flux = np.sqrt((self.var[i1:i2] * np.diff(d)**2).sum())
+            err_flux = np.sqrt((self.var[i1:i2] * np.diff(d) ** 2).sum())
         return (flux, err_flux * out_unit)
 
     def poly_fit(self, deg, weight=True, maxiter=0,
@@ -1026,6 +1028,7 @@ class Spectrum(ArithmeticMixin, DataArray):
             sig = np.std(err)
             n_p = len(d)
             for it in range(maxiter):
+                err = d - np.polynomial.polynomial.polyval(w, p)
                 ind = np.where((err >= nsig[0] * sig) &
                                (np.abs(err) <= nsig[1] * sig))
                 if len(ind[0]) == n_p:
@@ -1221,8 +1224,8 @@ class Spectrum(ArithmeticMixin, DataArray):
         vflux, wsum = np.ma.average(self.data[lambda_slice], weights=w,
                                     returned=True)
         if self.var is not None:
-            err_flux = np.sqrt(np.ma.sum(self.var[lambda_slice] * w**2) /
-                               wsum**2)
+            err_flux = np.sqrt(np.ma.sum(self.var[lambda_slice] * w ** 2) /
+                               wsum ** 2)
         else:
             err_flux = np.inf
 
@@ -1230,6 +1233,22 @@ class Spectrum(ArithmeticMixin, DataArray):
         vflux2 = (vflux * self.unit).to(unit)
         err_flux2 = (err_flux * self.unit).to(unit)
         return flux2mag(vflux2.value, err_flux2.value, l0)
+
+    def to_abmag(self):
+        """ convert a spectrum in AB magnitude"""
+        cs = C.to('Angstrom/s').value  # speed of light in A/s
+        wave = self.wave.coord(unit='Angstrom')
+        # unit = u.Unit('erg.s-1.cm-2.Angstrom-1')
+        # WIP note that the data and var should be converted to the correct units
+        data = self.data
+        mag = -48.60 - 2.5 * np.log10(wave ** 2 * data / cs)
+        if self.var is not None:
+            err = np.sqrt(self.var)
+            var = (2.5 * err / (data * np.log(10))) ** 2
+        else:
+            var = None
+        spmag = Spectrum(wave=self.wave, data=mag, var=var)
+        return spmag
 
     def wavelet_filter(self, levels=9, sigmaCutoff=5.0, epsilon=0.05,
                        inplace=False):
@@ -1546,8 +1565,8 @@ class Spectrum(ArithmeticMixin, DataArray):
             Type of the wavelength coordinates. If None, inputs are in pixels.
         """
         gauss = lambda p, x: cont \
-            + p[0] * (1 / np.sqrt(2 * np.pi * (p[2] ** 2))) \
-            * np.exp(-(x - p[1]) ** 2 / (2 * p[2] ** 2))
+                             + p[0] * (1 / np.sqrt(2 * np.pi * (p[2] ** 2))) \
+                             * np.exp(-(x - p[1]) ** 2 / (2 * p[2] ** 2))
 
         sigma = fwhm * gaussian_fwhm_to_sigma
 
@@ -1693,10 +1712,10 @@ class Spectrum(ArithmeticMixin, DataArray):
         # 1d gaussian function
         # p[0]: flux 1, p[1]:center 1, p[2]: fwhm, p[3] = peak 2
         gaussfit = lambda p, x: cont0 + \
-            p[0] * (1 / np.sqrt(2 * np.pi * (p[2] ** 2))) * \
-            np.exp(-(x - p[1]) ** 2 / (2 * p[2] ** 2)) + \
-            p[3] * (1 / np.sqrt(2 * np.pi * (p[2] ** 2))) * \
-            np.exp(-(x - (p[1] * wratio)) ** 2 / (2 * p[2] ** 2))
+                                p[0] * (1 / np.sqrt(2 * np.pi * (p[2] ** 2))) * \
+                                np.exp(-(x - p[1]) ** 2 / (2 * p[2] ** 2)) + \
+                                p[3] * (1 / np.sqrt(2 * np.pi * (p[2] ** 2))) * \
+                                np.exp(-(x - (p[1] * wratio)) ** 2 / (2 * p[2] ** 2))
 
         # 1d gaussian fit
         if spec.var is not None and weight:
@@ -1992,10 +2011,10 @@ class Spectrum(ArithmeticMixin, DataArray):
         sigma_left = fwhm_left * gaussian_fwhm_to_sigma
         sigma_right = fwhm_right * gaussian_fwhm_to_sigma
 
-#         if peak is True:
-#             right_norm = flux * np.sqrt(2. * np.pi * sigma_right ** 2)
-#         else:
-#             right_norm = 2. * flux / (1. + sigma_left / sigma_right)
+        #         if peak is True:
+        #             right_norm = flux * np.sqrt(2. * np.pi * sigma_right ** 2)
+        #         else:
+        #             right_norm = 2. * flux / (1. + sigma_left / sigma_right)
 
         lmin = lpeak - 5 * sigma_left
         lmax = lpeak + 5 * sigma_right
@@ -2027,7 +2046,7 @@ class Spectrum(ArithmeticMixin, DataArray):
         kernel_size : float
             Size of the median filter window.
         unit : `astropy.units.Unit`
-            unit ot the kernel size
+            unit of the kernel size
         inplace : bool
             If False, return a filtered copy of the spectrum (the default).
             If True, filter the original spectrum in-place, and return that.
@@ -2050,8 +2069,8 @@ class Spectrum(ArithmeticMixin, DataArray):
         res._data = data[ks:-ks]
         res._var = None
         return res
-    
-    def filter(self, kernel = Box1DKernel, **parameters):
+
+    def filter(self, kernel=Box1DKernel, **parameters):
         """Perform filtering on the spectrum.
 
         Uses `astropy.convolution` kernels and convolution.
@@ -2059,15 +2078,15 @@ class Spectrum(ArithmeticMixin, DataArray):
         Parameters
         ----------
         kernel : `astropy.convolution.Kernel1D`
-            astropy kernel to use 
+            astropy kernel to use
             (see `https://docs.astropy.org/en/stable/convolution/kernels.html#available-kernels`)
-            
+
             - Box1DKernel (default, parameters: width)
             - Gaussan1DKernel (parameters: stddev)
-             
+
         parameters : keywords
             parameters to pass to the kernel
- 
+
 
         Returns
         -------
@@ -2075,11 +2094,10 @@ class Spectrum(ArithmeticMixin, DataArray):
         """
         res = self.copy()
         data = res.data
-        data = convolve(data, kernel(**parameters)) 
+        data = convolve(data, kernel(**parameters))
         res._data = data
         res._var = None
         return res
-    
 
     def convolve(self, other, inplace=False):
         """Convolve a Spectrum with a 1D array or another Spectrum, using
@@ -2272,7 +2290,7 @@ class Spectrum(ArithmeticMixin, DataArray):
         n = int(n / 2) * 2
         data = np.arange(-n, n + 1)
         kernel = special.erf((1 + 2 * data) / (2 * np.sqrt(2) * s)) \
-            + special.erf((1 - 2 * data) / (2 * np.sqrt(2) * s))
+                 + special.erf((1 - 2 * data) / (2 * np.sqrt(2) * s))
         kernel /= kernel.sum()
 
         res._data = signal.correlate(res._data, kernel, mode='same')
@@ -2506,16 +2524,101 @@ class Spectrum(ArithmeticMixin, DataArray):
         plt.connect('motion_notify_event', _on_move)
         self._plot_id = len(ax.lines) - 1
 
-    def to_spectrum1d(self, unit_wave=u.angstrom):
-        """Return a ``specutils.Spectrum1D`` object."""
-        from astropy.nddata import StdDevUncertainty
-        try:
-            from specutils import Spectrum1D
-        except ImportError:
-            self._logger.error('specutils package not found')
-            raise
 
-        flux = u.Quantity(self._data, unit=self.unit, copy=False)
-        std = StdDevUncertainty(np.sqrt(self._var), unit=self.unit, copy=False)
-        return Spectrum1D(flux=flux, uncertainty=std, mask=self._mask,
-                          wcs=self.wave.wcs, copy=False)
+class Spectrum1D_MPDAF(Spectrum1D):
+    """This class is inherited from the `specutils.Spectrum1D` class. It lets the user to easily do the relationship between `Spectrum` object from mpdaf, and `Spectrum1D` objects from specutils.
+    """
+    def __init__(self, flux=None, spectral_axis=None, wcs=None,
+                 velocity_convention=None, rest_value=None, redshift=None,
+                 radial_velocity=None, bin_specification=None, filename=None, hdulist=None, copy=True,
+                 primary_header=None, data_header=None,
+                 data_ext=None, var_ext=None, dq_ext=None, convert_float64=True,
+                 **kwargs):
+        super().__init__(flux=flux, spectral_axis=spectral_axis, wcs=wcs,
+                         velocity_convention=velocity_convention, rest_value=rest_value, redshift=redshift,
+                         radial_velocity=radial_velocity, bin_specification=bin_specification, **kwargs)
+
+        self._data_ext = data_ext
+        self._var_ext = var_ext
+        self._dq_ext = dq_ext
+        self._convert_float64 = convert_float64
+        self._data_header = data_header
+        self._filename = filename
+        self._primary_header = primary_header
+
+    @classmethod
+    def new_obj_from_mpdaf_spectrum(cls, spec_mpdaf):
+        """
+            Return a ``Spectrum1D_MPDAF`` object.
+
+            Parameters
+            ----------
+            spec_mpdaf : `mpdaf.obj.Spectrum`
+                The input spectrum object from which to create the `specutils.Spectrum1D` object.
+
+            Returns
+            -------
+            `Spectrum1D_MPDAF`
+                A `Spectrum1D_MPDAF` object created from the input `spec_mpdaf` object.
+
+            This method creates a `Spectrum1D_MPDAF` object from an input `mpdaf.obj.Spectrum` object.
+            The `flux` data is converted to an astropy.units.Quantity object with the same units as `spec_mpdaf`. The
+            `uncertainty` is calculated from the `spec_mpdaf.var` data if it exists, otherwise it is set to None. The
+            `spectral_axis` is converted to an astropy.units.Quantity object with the same units as
+            `spec_mpdaf.wave`. The `mask` is copied from the `spec_mpdaf` object to the `specutils.Spectrum1D` object.
+        """
+        flux = u.Quantity(spec_mpdaf.data.data, unit=spec_mpdaf.unit, copy=False)
+        if spec_mpdaf.var is not None:
+            uncertainty = StdDevUncertainty(np.sqrt(spec_mpdaf.var.data), unit=spec_mpdaf.unit)
+        else:
+            uncertainty = None
+
+        spectral_axis = spec_mpdaf.wave.wcs.pixel_to_world_values(np.arange(flux.shape[0])) * spec_mpdaf.wave.unit
+
+        return cls(flux=flux, uncertainty=uncertainty, mask=spec_mpdaf.mask,
+                   spectral_axis=spectral_axis, bin_specification='centers',
+                   data_header=spec_mpdaf.data_header,filename=spec_mpdaf.filename,
+                   primary_header=spec_mpdaf.primary_header,
+                   data_ext=spec_mpdaf._data_ext, var_ext=spec_mpdaf._var_ext, dq_ext=spec_mpdaf._dq_ext,
+                   convert_float64=spec_mpdaf._convert_float64,
+                   copy=False)
+
+    def to_mpdaf_spectrum(self):
+        """
+            Convert a ``Spectrum1D_MPDAF`` object to a ``Spectrum`` object.
+
+            Parameters
+            ----------
+            self : `Spectrum1D_MPDAF`
+            The ``Spectrum1D_MPDAF`` object to convert.
+
+            Returns
+            -------
+            `Spectrum`
+            The converted ``Spectrum`` object.
+
+            This method converts a ``Spectrum1D_MPDAF` object to a ``Spectrum`` object from the MPDAF
+            library. The method checks if the spectral axis is linearly spaced and if so, it creates a
+            ``Spectrum`` object with the same data, variance, mask, unit and spectral axis as the input
+            ``Spectrum1D_MPDAF`` object. If the spectral axis is not linearly spaced, an error is raised.
+        """
+        if len(np.unique(np.diff(self.spectral_axis))) == 1:
+            if self.uncertainty:
+                var = self.uncertainty.array ** 2
+            else:
+                var = None
+            wave = WaveCoord(crpix=1.0, cdelt=np.diff(self.spectral_axis.value)[0],
+                             crval=self.spectral_axis.value[0], cunit=self.spectral_axis.unit)
+            wave.wcs.array_shape = self.shape
+            mpdaf_spectrum = Spectrum(filename=self._filename, data_header=self._data_header,
+                                      primary_header=self._primary_header, data=self.data, var=var, mask=self.mask,
+                                      unit=self.unit, wave=wave,
+                                      shape=self.data.shape[0],
+                                      convert_float64=self._convert_float64)
+            mpdaf_spectrum.wcs = None
+            mpdaf_spectrum._data_ext = self._data_ext
+            mpdaf_spectrum._var_ext = self._var_ext
+            mpdaf_spectrum._dq_ext = self._dq_ext
+            return mpdaf_spectrum
+        else:
+            raise ValueError("The spectral axis is not linearly spaced. Cannot convert Spectrum1D_MPDAF to Spectrum.")

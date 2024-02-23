@@ -1,8 +1,8 @@
 """
-Copyright (c) 2010-2018 CNRS / Centre de Recherche Astrophysique de Lyon
+Copyright (c) 2010-2023 CNRS / Centre de Recherche Astrophysique de Lyon
 Copyright (c) 2016-2019 Simon Conseil <simon.conseil@univ-lyon1.fr>
 Copyright (c)      2016 Martin Shepherd <martin.shepherd@univ-lyon1.fr>
-Copyright (c) 2016-2017 Laure Piqueras <laure.piqueras@univ-lyon1.fr>
+Copyright (c) 2016-2023 Laure Piqueras <laure.piqueras@univ-lyon1.fr>
 
 All rights reserved.
 
@@ -31,13 +31,13 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-
+from astropy.io import fits
 import astropy.units as u
 import numpy as np
 import pytest
 import scipy.ndimage as ndi
 
-from mpdaf.obj import Image, WCS, gauss_image, moffat_image
+from mpdaf.obj import Image, WCS, gauss_image, moffat_image, DataArray
 from numpy.testing import (assert_array_equal, assert_allclose,
                            assert_almost_equal, assert_equal,
                            assert_array_almost_equal)
@@ -65,6 +65,37 @@ def test_arithmetic_images(image):
             image3._data,
             op(image._data * image.unit, image2._data * image2.unit)
             .to(image3.unit).value)
+
+def test_add_in_images():
+    cube1 = generate_cube(uwave=u.nm)
+    image1 = generate_image(data=6.0, wcs=cube1.wcs, unit=2 * u.ct)
+
+    cube2 = generate_cube(uwave=u.nm)
+    image2 = generate_image(data=2.0, wcs=cube2.wcs, unit=2 * u.ct)
+
+    # Test de l'addition de deux images identiques
+    test = image1 + image1
+    mul = image1 * 2
+    assert_almost_equal(test.data, mul.data)
+
+def test_arithmetic_pow():
+    cube1 = generate_cube(uwave=u.nm)
+    image1 = generate_image(wcs=cube1.wcs, unit=2 * u.ct)
+
+    # Test pow 1
+    test_img = image1 ** 1.0
+    assert_almost_equal(test_img.data, image1.data)
+    assert_almost_equal(test_img.var, image1.var)
+
+    # Test pow 0.5 = sqrt
+    img_sqrt = image1.sqrt()
+    test_img = image1 ** 0.5
+    assert_almost_equal(test_img.data, img_sqrt.data)
+
+    # Test pow 2
+    img_mul = image1 * image1
+    test_img = image1 ** 2.0
+    assert_almost_equal(test_img.data, img_mul.data)
 
 
 def test_arithmetic_scalar(image):
@@ -108,6 +139,67 @@ def test_get(image):
     assert_image_equal(ima, shape=(2, 3), start=(0, 1), end=(1, 3),
                        step=(1, 1))
 
+
+def test_write_mask_file(tmpdir):
+    """Image class: testing write_mask_file method"""
+    # Create an image whose pixels are all masked.
+
+    image1 = generate_image(shape=(9, 7), data=2.0, var=0.5, mask=True)
+
+    # Create a masked array of unmasked values to be assigned to the
+    # part of the image, with just a diamond shaped area of pixels
+    # unmasked.
+
+    diamond = np.ma.array(data=[[6.0, 2.0, 9.0],
+                                [1.0, 4.0, 8.0],
+                                [0.0, 5.0, 3.0]],
+                          mask=[[True, False, True],
+                                [False, False, False],
+                                [True, False, True]])
+    image1.data[2:5, 1:4] = diamond.data
+    # Set the WCS information in the image header
+    header = fits.Header()
+    header['CTYPE1'] = 'RA---TAN'
+    header['CRVAL1'] = 0
+    header['CRPIX1'] = 5
+    header['CDELT1'] = -0.1
+    header['CTYPE2'] = 'DEC--TAN'
+    header['CRVAL2'] = 0
+    header['CRPIX2'] = 5
+    header['CDELT2'] = 0.1
+    image1.header = header
+    image1.wcs = WCS(header)
+
+    # Get the mask file
+    testfile = str(tmpdir.join('test.fits'))
+    for invert in [True, False]:
+        image1.write_mask_file(testfile, invert)
+        # Open the mask file as a fits image
+        with fits.open(testfile) as hdul:
+            # Check that there is only one HDU in the file
+            assert len(hdul) == 1
+            # Check that the HDU is a PrimaryHDU
+            assert isinstance(hdul[0], fits.PrimaryHDU)
+            expected_data = ((image1.mask)^invert).astype(np.uint8)
+            np.testing.assert_array_equal(hdul[0].data, expected_data)
+            # Check that the WCS information is in the header
+            assert 'CTYPE1' in hdul[0].header
+            assert 'CTYPE2' in hdul[0].header
+            assert 'CRVAL1' in hdul[0].header
+            assert 'CRVAL2' in hdul[0].header
+            assert 'CRPIX1' in hdul[0].header
+            assert 'CRPIX2' in hdul[0].header
+            assert 'CDELT1' in hdul[0].header
+            assert 'CDELT2' in hdul[0].header
+
+            assert hdul[0].header['CTYPE1'] == header['CTYPE1']
+            assert hdul[0].header['CTYPE2'] == header['CTYPE2']
+            assert hdul[0].header['CRVAL1'] == header['CRVAL1']
+            assert hdul[0].header['CRVAL2'] == header['CRVAL2']
+            assert hdul[0].header['CRPIX1'] == header['CRPIX1']
+            assert hdul[0].header['CRPIX2'] == header['CRPIX2']
+            assert hdul[0].header['CDELT1'] == header['CDELT1']
+            assert hdul[0].header['CDELT2'] == header['CDELT2']
 
 def test_crop():
     """Image class: testing crop method"""
@@ -726,7 +818,7 @@ def test_peak_detection_and_fwhm():
     peaks = ima.peak_detection(5, 2)
     assert peaks.shape == (1, 2)
     assert_allclose(peaks[0], (np.array(shape) - 1) / 2.0)
-    assert_allclose(ima.fwhm(unit_radius=None), fwhm, rtol=0.1)
+    assert_allclose(ima.fwhm_gauss(unit_radius=None), fwhm, rtol=0.1)
 
 
 def test_get_item():
