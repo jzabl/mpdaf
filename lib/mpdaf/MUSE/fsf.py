@@ -42,7 +42,7 @@ from astropy.stats import sigma_clip
 from ..obj import Cube, WCS, Image, iter_ima
 from ..tools import all_subclasses
 
-__all__ = ['Moffat2D', 'FSFModel', 'OldMoffatModel', 'MoffatModel2', 'combine_fsf']
+__all__ = ['Moffat2D', 'FSFModel', 'MoffatModel2', 'combine_fsf']
 
 
 def find_model_cls(hdr):
@@ -285,59 +285,8 @@ class FSFModel:
         return Cube(wcs=wcs, wave=wave, data=data)
 
 
-class OldMoffatModel(FSFModel):
-    """Moffat FSF with fixed beta and FWHM varying with wavelength."""
-
-    name = 'Old model with a fixed beta'
-    model = 'MOFFAT1'
-
-    def __init__(self, a, b, beta, pixstep, field=0):
-        super().__init__()
-        self.a = a
-        self.b = b
-        self.beta = beta
-        self.pixstep = pixstep
-        self.field = field
-
-    @classmethod
-    def from_header(cls, hdr, pixstep, field=0):
-        if 'FSF%02dBET' % field not in hdr:
-            raise ValueError('FSF%02dBET not found in header' % field)
-        beta = hdr['FSF%02dBET' % field]
-        a = hdr['FSF%02dFWA' % field]
-        b = hdr['FSF%02dFWB' % field]
-        return cls(a, b, beta, pixstep, field=field)
-
-    def info(self):
-        self.logger.info('Model %s Beta %f FWHM a %f b %f Step %f',
-                         self.model, self.beta, self.a, self.b, self.pixstep)
-
-    def to_header(self, hdr=None, field_idx=0):
-        hdr = super().to_header(hdr=hdr)
-        hdr['FSF%02dBET' % field_idx] = np.around(self.beta, decimals=2)
-        hdr['FSF%02dFWA' % field_idx] = np.around(self.a, decimals=3)
-        hdr['FSF%02dFWB' % field_idx] = float('%.3e' % self.b)
-        return hdr
-
-    def get_fwhm(self, lbda, unit='arcsec'):
-        fwhm = self.a + self.b * lbda
-        if unit == 'pix':
-            fwhm /= self.pixstep
-        return fwhm
-
-    def get_beta(self, lbda):
-        return self.beta
-
-    def to_model2(self):
-        """Convert the model to a model=2 one."""
-        l1, l2 = 5000, 9000
-        a = self.b * (l2 - l1)
-        b = self.a + a * (l1 / (l2 - l1) + 0.5)
-        fwhm_pol = [a, b]
-        return MoffatModel2(fwhm_pol, [self.beta], (l1, l2), self.pixstep)
-
-
 class MoffatModel2(FSFModel):
+
     """Circular MOFFAT beta=poly(lbda) fwhm=poly(lbda)."""
 
     name = "Circular MOFFAT beta=poly(lbda) fwhm=poly(lbda)"
@@ -345,29 +294,29 @@ class MoffatModel2(FSFModel):
 
     def __init__(self, fwhm_pol, beta_pol, lbrange, pixstep, field=0):
         """ Create a FSF object
-        
+
         Parameters
         ----------
         fwhm_pol : list
             list of polynome coefficients for FWHM(l)::
-            
+
                 FWHM(l) = fwhm_pol[0] * l**deg + ... + fwhm_pol[deg]
                 l = (lbda - lb1) / (lb2 - lb1) - 0.5
-                
+
         beta_pol : list
             list of polynome coefficients for beta(l)
         lbrange : tuple
             lb1,lb2 wavelengths used for wavelength normalisation
         pixstep : float
-            spaxel value in arcsec 
+            spaxel value in arcsec
         field : int
             field location in case of multiple FSF
-            
+
         Returns
         -------
         fsf : `~mpdaf.MUSE.MoffatModel2`
             fsf model
-            
+
         """
         super().__init__()
         self.fwhm_pol = fwhm_pol
@@ -379,35 +328,52 @@ class MoffatModel2(FSFModel):
     @classmethod
     def from_header(cls, hdr, pixstep, field=0):
         """ Read FSF from file header
-        
+
         Parameters
         ----------
         hdr : `astropy.io.fits.Header`
             FITS header
         pixstep : float
-            spaxel value in arcsec 
-            
+            spaxel value in arcsec
+
         Returns
         -------
         fsf : `~mpdaf.MUSE.MoffatModel2`
             fsf model
-        
+
         """
-        if 'FSFLB1' not in hdr or 'FSFLB2' not in hdr:
-            raise ValueError('Missing FSFLB1/FSFLB2 keywords in file header')
+        if 'FSFMODE' not in hdr:
+            raise ValueError('Missing FSFMODE keyword in file header')
+        if hdr['FSFMODE'] == 'MOFFAT1':  # old model
+            if 'FSF%02dBET' % field not in hdr:
+                raise ValueError('FSF%02dBET not found in header' % field)
+            _beta = hdr['FSF%02dBET' % field]
+            _a = hdr['FSF%02dFWA' % field]
+            _b = hdr['FSF%02dFWB' % field]
+            # Convert the model to a model=2 one.
+            l1, l2 = 5000, 9000
+            a = _b * (l2 - l1)
+            b = _a + a * (l1 / (l2 - l1) + 0.5)
+            fwhm_pol = [a, b]
+            return MoffatModel2(fwhm_pol, [_beta], (l1, l2), pixstep)
 
-        lbrange = (hdr['FSFLB1'], hdr['FSFLB2'])
-        if lbrange[1] <= lbrange[0]:
-            raise ValueError('Wrong FSF lambda range')
+        else:
+            if 'FSFLB1' not in hdr or 'FSFLB2' not in hdr:
+                raise ValueError(
+                    'Missing FSFLB1/FSFLB2 keywords in file header')
 
-        if 'FSF%02dFNC' % field not in hdr:
-            raise ValueError('FSF%02dFNC not found in header' % field)
+            lbrange = (hdr['FSFLB1'], hdr['FSFLB2'])
+            if lbrange[1] <= lbrange[0]:
+                raise ValueError('Wrong FSF lambda range')
 
-        ncf = hdr['FSF%02dFNC' % field]
-        fwhm_pol = [hdr['FSF%02dF%02d' % (field, k)] for k in range(ncf)]
-        ncb = hdr['FSF%02dBNC' % field]
-        beta_pol = [hdr['FSF%02dB%02d' % (field, k)] for k in range(ncb)]
-        return cls(fwhm_pol, beta_pol, lbrange, pixstep, field=field)
+            if 'FSF%02dFNC' % field not in hdr:
+                raise ValueError('FSF%02dFNC not found in header' % field)
+
+            ncf = hdr['FSF%02dFNC' % field]
+            fwhm_pol = [hdr['FSF%02dF%02d' % (field, k)] for k in range(ncf)]
+            ncb = hdr['FSF%02dBNC' % field]
+            beta_pol = [hdr['FSF%02dB%02d' % (field, k)] for k in range(ncb)]
+            return cls(fwhm_pol, beta_pol, lbrange, pixstep, field=field)
 
     def to_header(self, hdr=None, field_idx=0):
         """ Write FSF in file header
