@@ -276,7 +276,7 @@ class FSFModel:
 
     def get_3darray(self, lbda, shape, center=None):
         """Return FSF cube at the given wavelengths."""
-        return Moffat2D(self.get_fwhm(lbda, self.get_beta(lbda),
+        return Moffat2D(self.get_fwhm(lbda), self.get_beta(lbda),
                         shape, center)
 
     def get_cube(self, wave, wcs, center=None):
