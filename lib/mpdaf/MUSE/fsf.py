@@ -50,8 +50,9 @@ def find_model_cls(hdr):
         if cls.model == hdr['FSFMODE']:
             break
     else:
-        raise ValueError('FSFMODE {} is not implemented'
-                         .format(hdr['FSFMODE']))
+        if hdr['FSFMODE'] != "MOFFAT1":  # old model comptatible with model=2
+            raise ValueError('FSFMODE {} is not implemented'
+                             .format(hdr['FSFMODE']))
 
     return cls
 
