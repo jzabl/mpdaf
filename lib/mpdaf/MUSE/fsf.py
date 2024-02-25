@@ -87,7 +87,7 @@ def Moffat2D(fwhm, beta, shape, center=None, normalize=True):
     alpha = fwhm / (2 * np.sqrt(2**(1 / beta) - 1))
     amplitude = (beta - 1) * (np.pi * alpha**2)
     if center is None:
-        x0, y0 = np.array(shape) / 2 - np.array([0.5,0.5])
+        x0, y0 = np.array(shape) / 2 - np.array([0.5, 0.5])
     else:
         x0, y0 = center
     xx, yy = np.mgrid[:shape[0], :shape[1]]
@@ -153,6 +153,7 @@ def fit_poly(x, y, deg, reject=3.0):
 
 
 class FSFMultiModel(list):
+
     """Class to manage multiple FSF models."""
 
     @classmethod
@@ -166,6 +167,7 @@ class FSFMultiModel(list):
 
 
 class FSFModel:
+
     """Base class for FSF models."""
 
     def __init__(self):
@@ -409,19 +411,19 @@ class MoffatModel2(FSFModel):
 
     def to_header(self, hdr=None, field_idx=0):
         """ Write FSF in file header
-        
+
         Parameters
         ----------
         hdr : `astropy.io.fits.Header`
             FITS header
         field_idx : int
-            field index 
-            
+            field index
+
         Returns
         -------
         hdr : `astropy.io.fits.Header`
             FITS header
-            
+
         """
         hdr = super().to_header(hdr=hdr)
         hdr['FSFLB1'] = (self.lbrange[0], 'FSF Blue Ref Wave (A)')
@@ -440,19 +442,19 @@ class MoffatModel2(FSFModel):
 
     @classmethod
     def from_psfrec(cls, rawfilename, **kwargs):
-        """ Compute Reconstructed FSF from AO telemetry 
+        """ Compute Reconstructed FSF from AO telemetry
             Need muse_psfrec external python module.
-        
+
         Parameters
         ----------
         rawfilename : str
             MUSE raw file name with AO telemetry information
-            
+
         Returns
         -------
         fsf : `~mpdaf.MUSE.MoffatModel2`
             fsf model
-        
+
         """
         # Try to import muse-psfr, if not available raise an error
         from muse_psfr import psfrec
@@ -464,8 +466,10 @@ class MoffatModel2(FSFModel):
                 '%02d: Seeing %.02f,%.02f,%.02f,%.02f '
                 'GL %.02f,%.02f,%.02f,%.02f L0 %.02f,%.02f,%.02f,%.02f',
                 k + 1,
-                r['LGS1_SEEING'], r['LGS2_SEEING'], r['LGS3_SEEING'], r['LGS4_SEEING'],
-                r['LGS1_TUR_GND'], r['LGS2_TUR_GND'], r['LGS3_TUR_GND'], r['LGS4_TUR_GND'],
+                r['LGS1_SEEING'], r['LGS2_SEEING'], r[
+                    'LGS3_SEEING'], r['LGS4_SEEING'],
+                r['LGS1_TUR_GND'], r['LGS2_TUR_GND'], r[
+                    'LGS3_TUR_GND'], r['LGS4_TUR_GND'],
                 r['LGS1_L0'], r['LGS2_L0'], r['LGS3_L0'], r['LGS4_L0']
             )
         data = res['FIT_MEAN'].data
@@ -479,7 +483,7 @@ class MoffatModel2(FSFModel):
 
     @classmethod
     def from_starfit(cls, cube, pos, size=5, nslice=20, fwhmdeg=3, betadeg=3,
-                     lbrange=(5000, 9000)):
+                     lbrange=(5000, 9000), factor=1, saveimafit=False):
         """
         Fit a FSF model on a point source
 
@@ -499,12 +503,14 @@ class MoffatModel2(FSFModel):
             degre for polynomial fit of Beta(lbda)
         lbdarange: tuple of float
             (lbda1,lbda2)  reference wavelengths for normalisation
-            
+        factor: int
+            subsampling factor used in moffat fit
+
         Returns
         -------
         fsf : `~mpdaf.MUSE.MoffatModel2`
          fsf model with intermediate fitting results as .fit attribute
-        
+
              fsf.fit : dict
                   center : array of fitted star location
                   wave : array of wavelengths
@@ -513,7 +519,7 @@ class MoffatModel2(FSFModel):
                   fwhmpol : list of FWHM polynomial
                   betafit : array of fitted beta
                   betaerr : array of errors in beta returned by the fit
-                  betapol : list of beta polynomial  
+                  betapol : list of beta polynomial
                   center0 : first iteration of fitted star location
                   fwhm0 : first iteration of fitted FWHM
                   beta0 : first iteration of fitted beta
@@ -526,10 +532,14 @@ class MoffatModel2(FSFModel):
                     pos[1], pos[0], size, nslice, fwhmdeg, betadeg)
         white, lbda, imalist = get_images(cube, pos, size=size, nslice=nslice)
         lbdanorm = norm_lbda(lbda, lbrange[0], lbrange[1])
+        if saveimafit:
+            logger.debug('Save Ima fit and residuals')
+            imafit = []
+            imares = []
 
         logger.debug('-- First fit on white light image')
         fit1 = white.moffat_fit(fwhm=(0.8, 0.8), n=2.5, circular=True,
-                                fit_back=True, verbose=False)
+                                fit_back=True, verbose=False, factor=factor)
         logger.debug('RA: %.5f DEC: %.5f FWHM %.2f BETA %.2f PEAK %.1f '
                      'BACK %.1f', fit1.center[1], fit1.center[0], fit1.fwhm[0],
                      fit1.n, fit1.peak, fit1.cont)
@@ -539,7 +549,7 @@ class MoffatModel2(FSFModel):
         for k, ima in enumerate(imalist):
             f2 = ima.moffat_fit(fwhm=fit1.fwhm[0], n=fit1.n,
                                 center=fit1.center, fit_n=True, circular=True,
-                                fit_back=True, verbose=False)
+                                fit_back=True, verbose=False, factor=factor)
             logger.debug('%d RA: %.5f DEC: %.5f FWHM %.2f BETA %.2f PEAK %.1f '
                          'BACK %.1f', k + 1, f2.center[1], f2.center[0],
                          f2.fwhm[0], f2.n, f2.peak, f2.cont)
@@ -554,20 +564,27 @@ class MoffatModel2(FSFModel):
         for k, ima in enumerate(imalist):
             f2 = ima.moffat_fit(fwhm=fit1.fwhm[0], n=beta_pval[k],
                                 center=fit1.center, fit_n=False, circular=True,
-                                fit_back=True, verbose=False)
+                                fit_back=True, verbose=False, factor=factor,
+                                full_output=saveimafit)
             logger.debug('RA: %.5f DEC: %.5f FWHM %.2f BETA %.2f PEAK %.1f '
                          'BACK %.1f', f2.center[1], f2.center[0], f2.fwhm[0],
                          f2.n, f2.peak, f2.cont)
             fit3.append(f2)
+            if saveimafit:
+                imafit.append(f2.ima)
+                res = f2.ima.copy()
+                res.data[:,:] = ima.data - f2.ima.data
+                imares.append(res)
         fwhm_fit = np.array([f.fwhm[0] for f in fit3])
 
         logger.debug('-- Polynomial fit of FWHM(lbda)')
         fwhm_pol, fwhm_pval, fwhm_err = fit_poly(lbdanorm, fwhm_fit, fwhmdeg)
         logger.debug('FWHM poly {}'.format(fwhm_pol))
 
-        logger.debug('-- return FSF model')
         fsf = cls(lbrange=lbrange, fwhm_pol=fwhm_pol, beta_pol=beta_pol,
-                  pixstep=cube.get_step()[0])
+                  pixstep=cube.get_step()[1]*3600)
+
+        logger.debug('-- return FSF model')
         fsf.fit = {'center': np.array([f.center for f in fit3]),
                    'wave': lbda,
                    'fwhmfit': fwhm_fit,
@@ -580,10 +597,62 @@ class MoffatModel2(FSFModel):
                    'fwhm0': fit1.fwhm[0],
                    'beta0': fit1.n,
                    'ima': imalist}
+        if saveimafit:
+            fsf.fit['imafit'] = imafit
+            fsf.fit['imares'] = imares
+
+        return fsf
+
+    @classmethod
+    def from_FSFlist(cls, imalist, lbda, fwhm0, beta0, fwhmdeg=3, betadeg=3,
+                     lbrange=(5000, 9000)):
+        """
+        Fit a FSF model on a point source
+
+        Parameters
+        ----------
+        imalist : List of `mpdaf.obj.Image`
+                  List of FSF images
+        lbda : array
+               Wavelength vector corresponding to the list of FSFs
+        fwhm0 : float
+                Value used to initialize the FWHM in the Moffat fit
+        beta0 : float
+                Value used to initialize the beta parameter in the Moffat fit
+        fwhmdeg : int
+            degre for polynomial fit of FWHM(lbda)
+        betadeg : int
+            degre for polynomial fit of Beta(lbda)
+        lbdarange: tuple of float
+            (lbda1,lbda2)  reference wavelengths for normalisation
+
+        Returns
+        -------
+        fsf : `~mpdaf.MUSE.MoffatModel2`
+         fsf model
+        """
+        lbdanorm = norm_lbda(lbda, lbrange[0], lbrange[1])
+
+        fit = []
+        for k, ima in enumerate(imalist):
+            f = ima.moffat_fit(fwhm=fwhm0, n=beta0, fit_n=True, circular=True,
+                               fit_back=True, verbose=False)
+            fwhm0 = f.fwhm[0]
+            beta0 = f.n
+            fit.append(f)
+
+        beta_fit = np.array([f.n for f in fit])
+        beta_pol, beta_pval, beta_err = fit_poly(lbdanorm, beta_fit, betadeg)
+
+        fwhm_fit = np.array([f.fwhm[0] for f in fit])
+        fwhm_pol, fwhm_pval, fwhm_err = fit_poly(lbdanorm, fwhm_fit, fwhmdeg)
+
+        fsf = cls(lbrange=lbrange, fwhm_pol=fwhm_pol, beta_pol=beta_pol,
+                  pixstep=imalist[0].get_step()[0])
         return fsf
 
     def info(self):
-        """ Print fsf model information 
+        """ Print fsf model information
         """
         self.logger.info('Wavelength range: %s-%s',
                          self.lbrange[0], self.lbrange[1])
@@ -596,18 +665,18 @@ class MoffatModel2(FSFModel):
 
     def get_fwhm(self, lbda, unit='arcsec'):
         """ Return FWHM
-        
+
         Parameters
         ----------
         lbda : float or array of float
             wavelengths
         unit : str
-            arcsec or pix, unit of FWHM 
-            
+            arcsec or pix, unit of FWHM
+
         Returns
         -------
         FWHM : float or array
-        
+
         """
         lb = norm_lbda(lbda, self.lbrange[0], self.lbrange[1])
         fwhm = np.polyval(self.fwhm_pol, lb)
@@ -622,13 +691,13 @@ class MoffatModel2(FSFModel):
         ----------
         lbda : float or array of float
             wavelengths
-            
+
         Returns
         -------
         beta : float or array
-        
+
         """
-        
+
         lb = norm_lbda(lbda, self.lbrange[0], self.lbrange[1])
         return np.polyval(self.beta_pol, lb)
 
@@ -702,10 +771,12 @@ def fwhm_moffat2gauss(fwhm, beta):
     """
     translate a MOFFAT fwhm,beta in GAUSS equivalent fwhm
     """
-    pol = np.array([-1.89848758e-03,  3.37400959e-02, -2.38556527e-01,  8.50778040e-01,
-       -1.58670491e+00,  2.39768917e+00])
+    pol = np.array(
+        [-1.89848758e-03,  3.37400959e-02, -2.38556527e-01,  8.50778040e-01,
+         -1.58670491e+00,  2.39768917e+00])
     gfwhm = fwhm * np.polyval(pol, beta)
     return gfwhm
+
 
 def combine_fsf(fsflist, nlbda=20, size=21):
     """
