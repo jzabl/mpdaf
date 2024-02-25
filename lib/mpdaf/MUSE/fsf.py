@@ -42,7 +42,7 @@ from astropy.stats import sigma_clip
 from ..obj import Cube, WCS, Image, iter_ima
 from ..tools import all_subclasses
 
-__all__ = ['Moffat2D', 'FSFModel', 'MoffatModel2', 'combine_fsf']
+__all__ = ['Moffat2D', 'FSFModel', 'Moffat1', 'MoffatModel2', 'combine_fsf']
 
 
 def find_model_cls(hdr):
@@ -284,6 +284,58 @@ class FSFModel:
         lbda = wave.coord()
         data = self.get_3darray(lbda, (wcs.naxis2, wcs.naxis1), center)
         return Cube(wcs=wcs, wave=wave, data=data)
+
+
+class Moffat1(FSFModel):
+    """Moffat FSF with fixed beta and FWHM varying with wavelength."""
+
+    name = 'Old model with a fixed beta'
+    model = 'MOFFAT1'
+
+    def __init__(self, a, b, beta, pixstep, field=0):
+        super().__init__()
+        self.a = a
+        self.b = b
+        self.beta = beta
+        self.pixstep = pixstep
+        self.field = field
+
+    @classmethod
+    def from_header(cls, hdr, pixstep, field=0):
+        if 'FSF%02dBET' % field not in hdr:
+            raise ValueError('FSF%02dBET not found in header' % field)
+        beta = hdr['FSF%02dBET' % field]
+        a = hdr['FSF%02dFWA' % field]
+        b = hdr['FSF%02dFWB' % field]
+        return cls(a, b, beta, pixstep, field=field)
+
+    def info(self):
+        self.logger.info('Model %s Beta %f FWHM a %f b %f Step %f',
+                         self.model, self.beta, self.a, self.b, self.pixstep)
+
+    def to_header(self, hdr=None, field_idx=0):
+        hdr = super().to_header(hdr=hdr)
+        hdr['FSF%02dBET' % field_idx] = np.around(self.beta, decimals=2)
+        hdr['FSF%02dFWA' % field_idx] = np.around(self.a, decimals=3)
+        hdr['FSF%02dFWB' % field_idx] = float('%.3e' % self.b)
+        return hdr
+
+    def get_fwhm(self, lbda, unit='arcsec'):
+        fwhm = self.a + self.b * lbda
+        if unit == 'pix':
+            fwhm /= self.pixstep
+        return fwhm
+
+    def get_beta(self, lbda):
+        return self.beta
+
+    def to_model2(self):
+        """Convert the model to a model=2 one."""
+        l1, l2 = 5000, 9000
+        a = self.b * (l2 - l1)
+        b = self.a + a * (l1 / (l2 - l1) + 0.5)
+        fwhm_pol = [a, b]
+        return MoffatModel2(fwhm_pol, [self.beta], (l1, l2), self.pixstep)
 
 
 class MoffatModel2(FSFModel):
