@@ -1819,13 +1819,17 @@ class Source:
         if tags_to_try is not None:
             nb_tags = list(set(tags_to_try) & set(self.images))
             ksel = (object_mask != 0)
-            for tag in nb_tags:
-                if self.images[tag].wcs.isEqual(wcsref):
-                    weight = self.images[tag].data.copy()
-                    weight[ksel] -= np.min(weight[ksel])
-                    weight = weight.filled(0)
-                    self.spectra[tag + suffix] = compute_optimal_spectrum(
-                        subcub, object_mask, weight)
+            if ksel.sum() == 0:
+                self._logger.error('object mask has 0 valid pixels')
+            else:
+                for tag in nb_tags:
+                    self._logger.info("Extract spectra with tag %s" % (tag))
+                    if self.images[tag].wcs.isEqual(wcsref):
+                        weight = self.images[tag].data.copy()
+                        weight[ksel] -= np.min(weight[ksel])
+                        weight = weight.filled(0)
+                        self.spectra[tag + suffix] = compute_optimal_spectrum(
+                            subcub, object_mask, weight)
 
         # PSF
         if psf is not None:
