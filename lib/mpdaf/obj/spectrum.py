@@ -1011,6 +1011,8 @@ class Spectrum(ArithmeticMixin, DataArray):
             w = self.wave.coord()
         else:
             mask = ~self._mask
+            if mask.sum()==0:
+                raise ValueError('No valid data points to perform polynomial fit')
             d = self._data[mask]
             w = self.wave.coord()[mask]
             if weight:
