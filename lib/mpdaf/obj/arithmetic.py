@@ -175,9 +175,11 @@ def _arithmetic_var(operation, a, b, newshape=None):
         elif a.var is None:
             return np.broadcast_to(var, a.shape)
         else:
-            if _check_uncorrelated_data(a._data, b._data, newshape):
+            #if _check_uncorrelated_data(a._data, b._data, newshape):
+            try:
                 return a.var + var
-            else:
+            except:
+            #else:
                 return None
     elif operation in (ma.multiply, ma.divide):
         b_data = b._data.reshape(newshape)
