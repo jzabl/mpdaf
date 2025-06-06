@@ -1011,15 +1011,10 @@ class Spectrum(ArithmeticMixin, DataArray):
             w = self.wave.coord()
         else:
             mask = ~self._mask
-            if mask.sum()>0:
-                d = self._data[mask]
-                w = self.wave.coord()[mask]
-                if weight:
-                    vec_weight = vec_weight[mask]
-            else:
-                self._logger.warning('All pixels are masked, ignoring')
-                d = self._data
-                w = self.wave.coord()
+            d = self._data[mask]
+            w = self.wave.coord()[mask]
+            if weight:
+                vec_weight = vec_weight[mask]
 
         # normalize w
         w0 = np.min(w)
